@@ -1,0 +1,744 @@
+---
+title: "WRF DataProject"
+author: "RukayatBalogun"
+date: "2024-05-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## DATASET AND DATA UNDERSTANDING
+
+
+
+```{r Installation}
+#install.packages("readxl")
+#install.packages("zoo")
+#install.packages("dplyr")
+library(readxl)
+library(dplyr)
+library(zoo)
+
+```
+#### readxl
+
+readxl is a package for reading Excel files into R, which enables us to import data from Excel spreadsheets 
+
+
+#### dplyr
+dplyr is a package for data manipulation in R, providing a set of functions for data manipulation talks like filtering, selecting, arranging, summarizing, and mutating data
+
+#### zoo 
+zoo is a package for working with regular and irregular time series data in R. This package provide convenient structures for handling time series data, including varioys methods for indexing, merging, and analyzing time series data.
+
+
+### Data Importation
+```{r Data Importation}
+
+data <- read_excel("/Users/whitegg/Documents/GitHub/Bolton/Bolton c/Semester Two/Dataset/Weather copy.xlsx")
+df <- data
+
+head(data)
+
+
+```
+
+The dataset utilized in this study was supplied by the course instructor and encompasses 13 columns. These columns encompass data on eighht (8) distinct climatic and adaphic factors, recorded at 3-hour intervals throughout the day over the span of the month of May. This data is collected from over 300 different longtitudes and latitudes, with each row corresponding to a specific date and time. In total, there are 2482 columns and 5451 rows within the dataset, with date and time columns provided in character format. 
+
+### Filtering
+
+```{r Filtering}
+
+
+#graduate the first row to column header
+colnames(data) <- data[1, ]
+
+#remove the first row from dataset
+data <- data[-1, ]
+
+#Check the number of rows
+num_rows <- nrow(data)
+num_rows
+# Check the number of columns
+num_cols <- ncol(data)
+num_cols
+
+# Filter records where XLAT and XLONG match the target values 53°49'N	03°03'W
+filtered_data <- subset(data, XLAT == '53.490' & XLONG=='2.985')
+View(filtered_data)
+
+filtered_data
+#XLONG AND LAT REMOVED
+location <- filtered_data[,-c(1,2)]
+```
+The result shows we have 5451 rows and 2482 columns. We can deduce that the data arrangement is horizontally.In line 64, I have filtered a region **Blackpool** out of the entire dataset using the longitude and latitude columns. In the next line, I will transform the rows to column and vice versa.
+
+### Data Transformation
+
+```{r Data Transformation}
+
+# Define the total number of columns in the dataset
+total_columns <- ncol(location)
+
+
+
+row_matrix <- matrix(as.numeric(location), ncol=10,byrow = TRUE)
+head(row_matrix)
+
+
+coldata <- colnames(df[,-c(1,2)])
+head(coldata)
+
+dates <- function(coldata) {
+  dt <- grep("^X[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$", coldata, value= TRUE)
+  return(dt)
+}
+
+dates <- lapply(coldata, dates)
+head(dates)
+
+dates <- unlist(dates)
+head(dates)
+
+dataset <- data.frame(
+  dateTime = dates,
+  TSK = row_matrix[,1],
+  PSFC = row_matrix[,2],
+  U10 = row_matrix[,3],
+  V10 = row_matrix[,4],
+  Q2= row_matrix[,5],
+  RAINC = row_matrix[,6],
+  RAINNC = row_matrix[,7],
+  SNOW = row_matrix[,8],
+  TSLB =  row_matrix[,9],
+  SMOIS =  row_matrix[,10]
+)
+head(dataset)
+summary(dataset)
+
+```
+In the above figure, I have transformed the data to a matrix and converted to a numeric and double using the position the matrix. The result of the data after transformation shows the I Have 11 columns, 248 rows. *Datetime* column shows the data and time of each entry and the interval is 3 hours, *TSK* represents the skin temperature or surface temperature measured in Kelvin, *PSFC* measures the surface pressure in Pascal, *U10 , V10* measures in m/s the component of the wind in X and Y respectively. *Q2* measures the Humidity in kg, *Rainc and Rainnc* measures the conventive and non-conventive rain precipitation measured in Mm respectively, *Snow* records the snow water equivalent measured in kg/m2, *TSLB* records the soil temperature in oK, while *SMOIS* records the soil moisture in m3.
+
+### Cleaning DateTime 
+```{r Cleaning DateTime}
+# Replace 'X' with an empty string in the specified column
+dataset <- dataset %>%
+  mutate(dateTime = sub("X", "", dateTime))
+
+# View the modified dataset
+head(dataset)
+
+
+#Split the datetime into Date and Time
+
+
+dataset$date <- substr(dataset$dateTime, 2, 11)
+head(dataset)
+
+
+dataset$time <- substr(dataset$dateTime, 12, 17)
+head(dataset)
+
+```
+In this phase, I have replaced the string "X" in the column with an empty string. The *datetime* column has now been split into Date and Time. The next phase of data cleaning is to check if the data has outliers and how best to deal with it.
+
+### Missing Values
+
+```{r NA detection}
+summary(dataset)
+```
+Based on observation, the date and time observation above the attribute row start at the beginning of every TSK column in the dataset , there is a missing date and time at the final TSK column. I fixed this manually by imputing the missing observation as this might have been caused by data imputation or omission error. The result shows thet all columns have NAs and since they all have different measurement, I will be fixing the values individually. To do this, I will use linear interpolation which is a method that returns the mean of given points in the data. So the value of the na varies depending on the previous and next value to the missing value.
+
+```{r Dealing with NAs}
+library('zoo')
+#replace NA values using Linear Interpolation
+
+dataset$TSK <- na.approx(dataset$TSK )
+
+
+dataset$PSFC <- na.approx(dataset$PSFC )
+
+
+dataset$U10 <- na.approx(dataset$U10 )
+
+
+dataset$V10 <- na.approx(dataset$V10 )
+
+
+dataset$Q2 <- na.approx(dataset$Q2 )
+
+
+dataset$RAINC <- na.approx(dataset$RAINC )
+
+
+dataset$SNOW <- na.approx(dataset$SNOW )
+
+
+dataset$TSLB <- na.approx(dataset$TSLB )
+
+
+dataset$SMOIS <- na.approx(dataset$SMOIS )
+
+dataset$RAINNC <- na.approx(dataset$RAINNC, na.rm = FALSE)
+
+dataset$RAINNC[is.na(dataset$RAINNC)] <- 0
+
+summary(dataset)
+
+
+```
+
+### Linear Interpolation
+LI is a method of estimating values between two known data points on a line or curve . It assumes that there is a linear relationship between the data points. Linear interpolation is commonly used when you have a set of data points and you want to estimate the value of a point that falls between two given point. In this case, I have used LI to get the moving average of two points and have used the value to replace the NA values.
+
+### Outliers
+
+```{r outlier detection Visualization}
+#Check for outlier (tsoutlier)
+boxplot(dataset$TSK)
+
+
+boxplot(dataset$RAINNC,
+        data=dataset
+)
+
+
+boxplot(dataset$PSFC,
+        data=dataset
+)
+
+
+boxplot(dataset$U10,
+        data=dataset
+)
+
+boxplot(dataset$V10,
+        data=dataset
+)
+
+boxplot(dataset$Q2,
+        data=dataset
+)
+
+```
+The figure above shows there are outliers in the columns. I will investigate to check the distribution of the dataset if truely its an outlier 
+```{r Dealing with Outliers TSK}
+#calculate the 25% quantile
+tskq1 <- quantile(dataset$TSK, 0.25)
+tskq1
+#calculate the 75% quantile
+tskq3 <-  quantile(dataset$TSK, 0.75)
+tskq3
+
+#substract the 25% from the 75% quantile
+tskiqr <- tskq3 - tskq1 
+tskiqr
+
+#upper limit
+tskul <- tskq3 + 1.5*tskiqr
+tskul
+#lower limit
+tskll <- tskq1 - 1.5*tskiqr
+tskll
+
+#identify the outliers in the dataset
+tskoutliers <- dataset$TSK[dataset$TSK < tskll | dataset$TSK > tskul ]
+tskoutliers
+```
+The above result shows the distribution of outliers in the dataset. I will be using winsorization to deal with the outliers
+
+```{r Dealing with Outliers with winsorization}
+#install.packages(DescTools)
+
+library(DescTools)
+dataset$TSK <- Winsorize(dataset$TSK, probs= c(0.05, 0.95))
+dataset$RAINNC <- Winsorize(dataset$RAINNC, probs= c(0.05, 0.95))
+dataset$U10 <- Winsorize(dataset$U10, probs= c(0.05, 0.95))
+dataset$V10 <- Winsorize(dataset$V10, probs= c(0.05, 0.95))
+dataset$Q2 <- Winsorize(dataset$Q2, probs= c(0.05, 0.95))
+
+
+summary(dataset)
+```
+The result above shows the outliers have been dealt with
+
+### Duplicates
+
+```{r dupliacates}
+which(duplicated(dataset))
+
+```
+This result shows we have no duplicate in the dataset
+
+## Visualization
+
+### Multivariate Visualization
+
+```{r Multivairate Visualization}
+
+#install.packages("ggplot2")
+#install.packages("corrplot")
+
+# Load necessary libraries
+library(ggplot2)
+library(corrplot)
+
+columns_of_interest <- dataset[, c("TSK", "PSFC", "U10", "V10", "Q2","RAINNC")]
+
+# Multivariate Analysis - Correlation plot
+correlation_matrix <- cor(columns_of_interest)
+corrplot(correlation_matrix, method = "circle")
+```
+The Mutlivariate visualization shows there is a strong positive correlation with TSK and Q2, weak positive correlation with Rainnc and U10 , V10 and Rainnc. 
+
+### Bivariate Visualization
+```{r Bivariate Visualization}
+
+# Bivariate Analysis - Scatter plots
+ggplot(data = dataset, aes(x = TSK, y = Q2)) +
+  geom_point() +
+  labs(title = "Bivariate Visualization", x = "TSK", y = "Q2") +
+  theme_minimal()
+
+
+```
+The result of the visualization shows there Skin Temperature has a positive effect on the humidity of a particular region. That is, in the summer, air temperature is higher and holds more water vapour, which raises the level of humidity. High humidity makes temperatures feel hotter, even stifling, because all the water vapour in the air makes it difficult for sweat to evaporate from our skin.
+
+
+```{r Bivariate 2}
+ggplot(data = dataset, aes(x = U10, y = RAINNC)) +
+  geom_point() +
+  labs(title = "Bivariate Visualization", x = "U10", y = "RAINNC") +
+  theme_minimal()
+
+```
+The result shows a weak positive relation between the Component of the wind and non-conventive Rain. Which means that the direction of the wind has an impact also the directional tilt of the raindrops, which in turn determines the angle of raindrop impact on the soil surface.
+```{r Bivariate 3}
+ggplot(data = dataset, aes(x = V10, y = RAINNC)) +
+  geom_point() +
+  labs(title = "Bivariate Visualization", x = "V10", y = "RAINNC") +
+  theme_minimal()
+```
+This result is same with the *U10* Which means that the direction of the wind has an impact also the directional tilt of the raindrops, which in turn determines the angle of raindrop impact on the soil surface.
+
+### Univariate Visualization
+```{r Univariate}
+ggplot(data = dataset, aes(x = TSK)) +
+  geom_histogram(binwidth = 5, fill = "blue", color = "black") +
+  labs(title = "Univariate Histogram", x = "TSK", y = "Frequency") +
+  theme_minimal()
+```
+The result of the Univariate visualization shows that in the month of May, 2018, the skin temperature ranges from 280 K to 287K which means the highest it got was 14.35 degrees celsius . Usually, this temperature will vary in different location due to other factors like if the region is a sea side, this can impact the TSK of the region compared to other places. The month of may is the last month of Spring and so the temperature might appear to be the same with the Summer month of June for some days in the month.
+
+## Statistical Analysis
+
+```{r Statistical Analysis}
+
+for (col in names(dataset)) {
+  if (is.numeric(dataset[[col]]) && length(unique(dataset[[col]])) > 1) {
+    test_result <- shapiro.test(dataset[[col]])
+    
+    cat("Shapiro-Wilk Test for", col, ":", "\n")
+    print(test_result)
+    cat("\n")
+  } else {
+    cat("Cannot perform Shapiro-Wilk test for", col, "because all values are identical or non-numeric.", "\n")
+  }
+}
+
+```
+The Shapiro-Wilk test is a statistical test used to assess whether a given dataset follows a normal distribution. The interpretation of the results typically involves examining the p-value associated with the test statistic, denoted as 𝑊. The result of the Shapiro test states that the columns (TSK, PSFC, U10, V10 and Q2) are not normally distributed.
+
+```{r z-score}
+
+cols_to_standardize <- c("TSK", "PSFC", "U10", "V10", "Q2")
+
+# Apply Z-score normalization to selected columns
+dataset_standardized <- as.data.frame(scale(dataset[cols_to_standardize]))
+
+# View the standardized dataset
+head(dataset_standardized)
+
+for (col in names(dataset_standardized)) {
+
+  if (is.numeric(dataset_standardized[[col]])) {
+    test_result <- shapiro.test(dataset_standardized[[col]])
+    
+ 
+    cat("Shapiro-Wilk Test for", col, ":", "\n")
+    print(test_result)
+    cat("\n")
+  }
+}
+
+```
+
+The result indicates that after apply z-score normalization, the data is not normally distributed
+
+```{r Linear Regression Model}
+lm_model <- lm(TSK ~ Q2, data = dataset)
+
+# Print summary of the regression model
+print(summary(lm_model))
+
+# Plot the data points and the regression line
+plot(dataset$Q2, dataset$TSK, main = "Linear Regression: TSK vs Q2",
+     xlab = "Q2 (Humidity)", ylab = "TSK (Temperature Skin)")
+abline(lm_model, col = "red")
+
+```
+The result above shows there is a linear correlation with the TSK and Q2 variables. I will now apply Multiple Linear Regression to the data.
+
+```{r Multiple Linear Regression}
+#install.packages("car")
+library(car)
+
+# Fit the linear regression model
+model <- lm(TSK ~ Q2 + PSFC + U10 + V10, data = dataset)
+
+# Calculate VIF for each predictor variable
+vif_values <- car::vif(model)
+vif_values
+
+
+```
+The above result shows the relation of *TSK* with other features. I will now apply machine learning algorithm models for non-normally distributed data.
+
+```{r Machine Learning Algorithm}
+
+#install packages
+#install.packages("ggplot")
+#install.packages("caret")
+#install.packages("randomForest")
+#install.packages("glmnet")
+#install.packages("e1071")
+
+library(caret)
+library(randomForest)
+library(glmnet)
+library(e1071)
+
+# Split the data into training and testing sets ( 80% training, 20% testing)
+
+trainIndex <- createDataPartition(dataset$TSK, p = 0.8, list = FALSE)
+train_data <- dataset[trainIndex, ]
+test_data <- dataset[-trainIndex, ]
+
+# Feature selection for Linear Regression (e.g., Lasso Regression)
+lasso_model <- cv.glmnet(as.matrix(train_data[, c("PSFC", "U10", "V10", "Q2")]), train_data$TSK, alpha = 1)
+lasso_selected_features <- predict(lasso_model, s = "lambda.min", newx = as.matrix(train_data[, c("PSFC", "U10", "V10", "Q2")]))
+lasso_selected_features <- which(lasso_selected_features != 0)
+
+# Train Linear Regression model
+lm_model <- lm(TSK ~ PSFC + U10 + V10 + Q2, data = train_data)
+
+# Train Decision Tree model
+dt_model <- train(TSK ~ PSFC + U10 + V10 + Q2, data = train_data, method = "rpart")
+
+# Train RandomForestRegressor model
+rf_model <- randomForest(TSK ~ PSFC + U10 + V10 + Q2, data = train_data)
+
+# Train SVM model
+svm_model <- svm(TSK ~ PSFC + U10 + V10 + Q2, data = train_data, kernel = "linear")
+
+# Evaluate models on the testing set
+lm_pred <- predict(lm_model, newdata = test_data)
+dt_pred <- predict(dt_model, newdata = test_data)
+rf_pred <- predict(rf_model, newdata = test_data)
+svm_pred <- predict(svm_model, newdata = test_data)
+
+# Calculate evaluation metrics
+lm_mae <- mean(abs(lm_pred - test_data$TSK))
+dt_mae <- mean(abs(dt_pred - test_data$TSK))
+rf_mae <- mean(abs(rf_pred - test_data$TSK))
+svm_mae <- mean(abs(svm_pred - test_data$TSK))
+
+lm_mse <- mean((lm_pred - test_data$TSK)^2)
+dt_mse <- mean((dt_pred - test_data$TSK)^2)
+rf_mse <- mean((rf_pred - test_data$TSK)^2)
+svm_mse <- mean((svm_pred - test_data$TSK)^2)
+
+lm_r_squared <- cor(lm_pred, test_data$TSK)^2
+dt_r_squared <- cor(dt_pred, test_data$TSK)^2
+rf_r_squared <- cor(rf_pred, test_data$TSK)^2
+svm_r_squared <- cor(svm_pred, test_data$TSK)^2
+
+cat("Linear Regression MAE:", lm_mae, "\n")
+cat("Decision Tree MAE:", dt_mae, "\n")
+cat("RandomForestRegressor MAE:", rf_mae, "\n")
+cat("Support Vector Machine MAE:", svm_mae, "\n")
+
+cat("Linear Regression MSE:", lm_mse, "\n")
+cat("Decision Tree MSE:", dt_mse, "\n")
+cat("RandomForestRegressor MSE:", rf_mse, "\n")
+cat("Support Vector Machine MAE:", svm_mae, "\n")
+
+cat("Linear Regression R-squared:", lm_r_squared, "\n")
+cat("Decision Tree R-squared:", dt_r_squared, "\n")
+cat("RandomForestRegressor R-squared:", rf_r_squared, "\n")
+cat("Support Vector Machine R-squared:", svm_r_squared, "\n")
+
+
+
+```
+The result shows that RandomForestRegressor is the best Machine Learning Algorithm for the dataset
+
+```{r Model Visualization}
+#  vectors to store the evaluation results
+mae <- c(lm_mae, dt_mae, rf_mae,svm_mae)
+mse <- c(lm_mse, dt_mse, rf_mse, svm_mse)
+r_squared <- c(lm_r_squared, dt_r_squared, rf_r_squared, svm_r_squared )
+
+#matrix to store the results
+results <- rbind(mae, mse, r_squared)
+
+
+row.names(results) <- c("MAE", "MSE", "R-squared")
+colnames(results) <- c("Linear Regression", "Decision Tree", "Random Forest", "Support Vector")
+
+# Plot 
+barplot(results, beside = TRUE, legend.text = TRUE, ylim = range(0,1.2*results), 
+        main = "Evaluation Results of Machine Learning Algorithms", 
+        xlab = "Metrics", ylab = "Values", col = c("blue", "green", "red" ))
+
+#legend
+legend("topright", legend = row.names(results), fill = c("blue", "green", "red"), 
+       title = "Metrics")
+
+```
+Visual representation of the Machine Learning Algorithm shows Random Forest has the hightest Value.
+
+```{r Time Series Analysis}
+#install.packages("tsoutliers")
+
+head(dataset)
+
+#library(tsoutliers)
+
+
+ts_data <- ts(dataset$TSK)
+summary(dataset$TSK)
+
+# detect outliers using Z-score
+detect_outliers <- function(ts_data, threshold = 3) {
+  #  mean and standard deviation
+  mean_val <- mean(ts_data)
+  sd_val <- sd(ts_data)
+  
+  # Z-scores for each data point
+  z_scores <- (ts_data - mean_val) / sd_val
+  
+  # Detect outliers based on threshold
+  outliers <- which(abs(z_scores) > threshold)
+  
+  return(outliers)
+}
+
+# detect_outliers function to each column
+outliers <- lapply(dataset[, c("TSK", "Q2")], detect_outliers)
+
+# detected outliers
+for (i in 1:length(outliers)) {
+  print(paste("Outliers in", names(outliers)[i], ":", outliers[[i]]))
+}
+write.csv(dataset,"dataset.csv", row.names = FALSE)
+
+```
+
+The above result shows that there are no outliers in the dataset a
+```{r Augmented Dickey-Fuller Test}
+
+
+library(tseries)
+
+dataset$dateTime <- as.POSIXct(dataset$dateTime, format="%d.%m.%Y.%H.%M")
+dataset$dateTime
+
+head(dataset)
+
+ts_dat <- subset(dataset, select=c(TSK, dateTime))
+ts_dat
+
+ts_d <- ts(ts_dat$TSK, start=1, frequency=8)
+ts_d
+# Explore the data visually
+plot(ts_dat, type="b", xlab="Date", ylab="Temperature")
+
+
+# Decompose the time series
+ts_decomp <- decompose(ts_d)
+plot(ts_decomp)
+
+boxplot(ts_d ~ cycle(ts_d))
+
+adf.test(ts_dat$TSK)
+
+
+
+
+```
+I used the decompose function in R to decompose our data into seasonal, trends, observed and random. 
+After conversion to time series data, I checked for the stationarity of the data using the Adf test. The p <0.05, therefore our data is stationary and does not require any differencing. The is, the result of my Augmented Dickey-Fuller Test is Stationary which means the mean and variance, do not change over time.
+
+```{r ARIMA}
+
+library(forecast)
+
+length(ts_d)
+
+train_indices <-createDataPartition(y=ts_d , p=0.8, list=FALSE)
+
+train_data <- ts_d[train_indices]
+train_data
+test_data <- ts_d[-train_indices]
+test_data
+
+
+arima_model <- forecast::auto.arima(train_data, trace= TRUE, seasonal=TRUE, stepwise = FALSE, approximation = FALSE)
+arima_model
+```
+After checking for stationarity I then split our data into training and testing sets. This is to enable us to train the model with the training data and test the accuracy and efficiency of the model on the test data. The y argument specifies the outcome variable (in this case, ts_d), the p argument specifies the proportion of the data to use for the training set (in this case, 0.8), and the list argument specifies whether to return a list or a vector of indices (in this case, we set it to FALSE to return a vector). I then fit an ARIMA (Autoregressive Integrated Moving Average) model to the training data. Using the auto.arima() function from the "forecast" package, I automatically find the best ARIMA model for the given data. The function searches for the best combination of ARIMA parameters (p, d, q) that minimises the Akaike Information Criterion (AIC). The train_data is the time series training data to fit the ARIMA model. Seasonal is set to TRUE Indicating that the model should consider seasonality in the data. Stepwise is set to FALSE Indicating that the function should not use a stepwise search algorithm and consider all possible outcome. Approximation parameters indicate whether the function is to speed up the selection process using approximation. In our case, it is set to false which allows the model to select a more accurate model but maybe slower. The Akaike Information Criterion value shows the best model is ARIMA(0,1,0).
+
+```{r Forecast }
+forecasts <- forecast::forecast(arima_model, h=length(test_data))
+forecasts
+
+
+```
+
+```{r Arima Accuracy}
+
+arima_acc <- accuracy(forecasts, test_data)
+arima_acc
+
+resi_acf <- acf(arima_model$residuals, lag.max=20, plot=TRUE)
+resi_acf
+resi_pcf <- pacf(arima_model$residuals, lag.max=20, plot=TRUE)
+resi_pcf
+
+arimarmse <- RMSE(test_data , forecasts$mean)
+arimarmse
+```
+As previously discussed,I am choosing RMSE as my evaluation metrics and based on this result, the RMSE value of the train set is closer to the RMSE value for the test set which implies that our model is accurate in prediction or closet to actual values
+
+```{r Time series Predition}
+ts_dat <- ts_dat %>% mutate (time = as.numeric (difftime(dateTime , min(dateTime), units = 'hours')))
+ts_dat
+
+set.seed(123)
+
+trainid <- sample(1:nrow(ts_dat),0.8*nrow(ts_dat))
+  
+trdt <- ts_dat[trainid,]
+  
+tstdt <- ts_dat[-trainid,]
+
+dim(trdt)
+dim(tstdt)
+
+trainm <- lm( TSK ~ time, data=trdt)
+trainm
+
+summary(trainm)
+
+pred <- predict(trainm, newdata=tstdt)
+pred
+
+
+```
+The first step here is to create a new variable representing time as a continuous numeric value. This is useful for building a linear regression model, as it allows us to capture the effect of time on the response variable (in this case, temperature). The 'dplyr' package's mutate() function to create a new variable called 'time' in the ts_dat dataset. The time variable is calculated using the difftime() function, which computes the difference between the datetime variable and the minimum datetime value (i.e., the earliest date and time in the dataset). The time difference is converted to hours by specifying the 'units' argument as "hours". Finally, 'as.numeric()' is used to convert the result into a numeric value. The 'time' variable now represents the elapsed time (in hours) since the beginning of the dataset.
+
+After the creation of the new table, I then split the data into two groups, the training set and the test set. This helps us to evaluate the performance of the model on unseen data and to assess how well the model performs on new data. The set. seed() function sets the random seed to a specific value (123, in this situation) in order to allow for the reproducibility of the results. The random sampling process will produce the same set of indices each time the code is run by using the same seed, making it easier to compare results across different runs.  
+The sample() function is used for random sample indices generation from the dataset. The first argument (1:nrow(ts_dat)) defines the range of indices to sample from, which ranges from 1 to the total number of rows of the dataset. The second argument (0.8 * nrow(ts_dat)) specifies the size of the sample, which is 80% of the total number of rows in this case. The sampled indices are stored in the trainid variable.
+The next line of code creates the training set by selecting the rows in the 'data' dataset corresponding to the trainid. The comma after trainid means that all columns are included and the next line of code creates the test set by selecting the rows in the 'data' dataset that are not part of the trainid The minus sign before trainid inverts the selection, so the test set contains the remaining 20% of the data. Again, the comma after -trainid means that all columns are included. The last set of code “dim” helps output the dimension of the train and test. It shows the number of rows and columns in the data set. 
+
+
+
+```{r Support Vector Regression model}
+lnrmse <- sqrt(mean((tstdt$TSK - pred )^2))
+lnrmse
+
+svr_mod <- svm(TSK ~ time , data = trdt , kernel='radial' )
+svr_mod
+```
+
+```{r Support Vector Regression 2}
+
+svr_mod2 <- svm(TSK ~ time , data = trdt , kernel='linear' )
+svr_mod2
+
+```
+
+```{r Support Vector Regression Model}
+svr_mod3 <- svm(TSK ~ time , data = trdt , kernel='polynomial' )
+svr_mod3
+```
+
+```{r Support Vector Regression Predictions}
+svr_prediction <- predict(svr_mod, newdata=tstdt)
+svr_prediction
+
+
+svr_prediction2 <- predict(svr_mod2, newdata=tstdt)
+svr_prediction2
+
+svr_prediction3 <- predict(svr_mod3, newdata=tstdt)
+svr_prediction3
+```
+
+```{r Support Vector Regression RSME}
+svr_rmse <- sqrt(mean((tstdt$TSK - svr_prediction )^2))
+cat('SVR RMSE:',svr_rmse)
+
+svr_rmse2 <- sqrt(mean((tstdt$TSK - svr_prediction2 )^2))
+cat('SVR RMSE:',svr_rmse2)
+
+
+svr_rmse3 <- sqrt(mean((tstdt$TSK - svr_prediction3 )^2))
+cat('SVR RMSE:',svr_rmse3)
+
+```
+```{r Random Foest}
+
+rf_model <- randomForest(TSK ~ time , data=trdt, ntree=100 )
+rf_model2 <- randomForest(TSK ~ time , data=trdt, ntree=200 )
+rf_model3 <- randomForest(TSK ~ time , data=trdt, ntree=300 )
+
+summary(rf_model)
+cat("-----------------------------------------")
+summary(rf_model2)
+cat("-----------------------------------------")
+summary(rf_model3)
+```
+```{r Random Forest Predictions}
+rf_prediction <- predict(rf_model , newdata=tstdt)
+rf_prediction
+
+rf_prediction2 <- predict(rf_model2 , newdata=tstdt)
+rf_prediction2
+
+
+rf_prediction3 <- predict(rf_model3 , newdata=tstdt)
+rf_prediction3
+
+```
+
+```{r Random Forest RMSE}
+rf_rmse <- sqrt(mean((tstdt$TSK - rf_prediction )^2))
+cat('RF RMSE:',rf_rmse)
+
+
+rf_rmse2 <- sqrt(mean((tstdt$TSK - rf_prediction2 )^2))
+cat('RF RMSE:',rf_rmse2)
+
+
+
+rf_rmse3 <- sqrt(mean((tstdt$TSK - rf_prediction3 )^2))
+cat('RF RMSE:',rf_rmse3)
+```
+
+The result compares the RMSE values for the individual models developed. It shows that random forest model has the highest predictive accuracy due to low RMSE values and with support vector have the lowest predictive accuracy due to high RMSE value
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
